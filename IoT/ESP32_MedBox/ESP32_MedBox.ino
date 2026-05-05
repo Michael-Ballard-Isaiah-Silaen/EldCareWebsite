@@ -23,9 +23,9 @@ const char* password = "abcdefgh123";
 
 
 // Updated endpoints to Vercel production (HTTPS)
-const char* loginUrl = "https://eld-care-web-proto.vercel.app/auth/sign-in";
-const char* serverUrl = "https://eld-care-web-proto.vercel.app/schedules";
-const char* notificationUrl = "https://eld-care-web-proto.vercel.app/notifications";
+const char* loginUrl = "https://eldcarebackend.vercel.app/auth/sign-in";
+const char* serverUrl = "https://eldcarebackend.vercel.app/schedules";
+const char* notificationUrl = "https://eldcarebackend.vercel.app/notifications";
 const char* defaultMedBoxId = "507f1f77bcf86cd799439011";
 
 
@@ -86,6 +86,8 @@ bool slot1WaitingForMotion = false;
 bool slot2WaitingForMotion = false;
 bool slot1ClosePending = false;
 bool slot2ClosePending = false;
+unsigned long slot1MotionWaitStartedAt = 0;
+unsigned long slot2MotionWaitStartedAt = 0;
 unsigned long slot1MotionDetectedAt = 0;
 unsigned long slot2MotionDetectedAt = 0;
 String activeScheduleIdSlot1 = "";
@@ -377,7 +379,11 @@ void fetchAndProcessSchedules(String currentDate, String currentTime) {
    http.addHeader("access_token", jwtToken.c_str());
 
 
+   unsigned long getStartedAt = millis();
    int httpResponseCode = http.GET();
+   unsigned long getLatency = millis() - getStartedAt;
+   Serial.printf("[Latency] HTTP GET jadwal: %lu ms | Response code: %d\n", getLatency, httpResponseCode);
+
    if (httpResponseCode == 200) {
      String payload = http.getString();
      DynamicJsonDocument doc(16384);
@@ -444,6 +450,7 @@ void triggerSlot1(String scheduleId, String medicationName, String medBoxId) {
  activeMedBoxIdSlot1 = medBoxId;
  slot1WaitingForMotion = true;
  slot1ClosePending = false;
+ slot1MotionWaitStartedAt = millis();
  slot1MotionDetectedAt = 0;
  slot1BuzzerActive = true;
  slot1BuzzerOn = false;
@@ -453,6 +460,7 @@ void triggerSlot1(String scheduleId, String medicationName, String medBoxId) {
 
  servo1.write(SERVO_OPEN_ANGLE);
  Serial.println("Slot 1 servo is open. Buzzer will beep every 5 seconds while waiting for medication pickup.");
+ Serial.println("[PIR Speed] Slot 1 mulai menghitung waktu deteksi gerak setelah fetch data.");
 }
 
 
@@ -463,6 +471,7 @@ void triggerSlot2(String scheduleId, String medicationName, String medBoxId) {
  activeMedBoxIdSlot2 = medBoxId;
  slot2WaitingForMotion = true;
  slot2ClosePending = false;
+ slot2MotionWaitStartedAt = millis();
  slot2MotionDetectedAt = 0;
  slot2BuzzerActive = true;
  slot2BuzzerOn = false;
@@ -472,6 +481,7 @@ void triggerSlot2(String scheduleId, String medicationName, String medBoxId) {
 
  servo2.write(SERVO_OPEN_ANGLE);
  Serial.println("Slot 2 servo is open. Buzzer will beep every 5 seconds while waiting for medication pickup.");
+ Serial.println("[PIR Speed] Slot 2 mulai menghitung waktu deteksi gerak setelah fetch data.");
 }
 
 
@@ -488,8 +498,10 @@ void handlePickupSlot1() {
    slot1WaitingForMotion = false;
    slot1ClosePending = true;
    slot1MotionDetectedAt = millis();
+   unsigned long detectionSpeed = slot1MotionWaitStartedAt == 0 ? 0 : slot1MotionDetectedAt - slot1MotionWaitStartedAt;
    stopBuzzerReminder(BUZZER_PIN_1, slot1BuzzerActive, slot1BuzzerOn);
    sendMedicationTakenNotification(activeMedBoxIdSlot1, activeMedicationNameSlot1);
+   Serial.printf("[PIR Speed] Slot 1 deteksi gerak setelah fetch data: %lu ms\n", detectionSpeed);
    Serial.println("PIR 1 detected motion. Slot 1 servo will close in 1 minute.");
  }
 
@@ -503,6 +515,7 @@ void handlePickupSlot1() {
    activeScheduleIdSlot1 = "";
    activeMedicationNameSlot1 = "";
    activeMedBoxIdSlot1 = "";
+   slot1MotionWaitStartedAt = 0;
  }
 }
 
@@ -520,8 +533,10 @@ void handlePickupSlot2() {
    slot2WaitingForMotion = false;
    slot2ClosePending = true;
    slot2MotionDetectedAt = millis();
+   unsigned long detectionSpeed = slot2MotionWaitStartedAt == 0 ? 0 : slot2MotionDetectedAt - slot2MotionWaitStartedAt;
    stopBuzzerReminder(BUZZER_PIN_2, slot2BuzzerActive, slot2BuzzerOn);
    sendMedicationTakenNotification(activeMedBoxIdSlot2, activeMedicationNameSlot2);
+   Serial.printf("[PIR Speed] Slot 2 deteksi gerak setelah fetch data: %lu ms\n", detectionSpeed);
    Serial.println("PIR 2 detected motion. Slot 2 servo will close in 1 minute.");
  }
 
@@ -535,6 +550,7 @@ void handlePickupSlot2() {
    activeScheduleIdSlot2 = "";
    activeMedicationNameSlot2 = "";
    activeMedBoxIdSlot2 = "";
+   slot2MotionWaitStartedAt = 0;
  }
 }
 
